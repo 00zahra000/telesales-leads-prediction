@@ -1,0 +1,23 @@
+﻿column_name,description
+Lead ID,شناسه Lead
+Created At,زمان ایجاد Lead
+Product Type,نوع محصولی که کاربر دنبالشه
+Channel,کانالی که Lead ازش وارد شده
+Device,Device مورد استفاده کاربر
+Partner,Partner یا منبع مرتبط با Lead
+City,شهر کاربر
+Insurance Company,شرکت بیمه انتخاب‌شده یا موردنظر کاربر
+Payment Type,روش پرداخت انتخاب‌شده
+Minutes Since Abandonment,چند دقیقه از آخرین رها کردن فرایند خرید گذشته
+Days To Policy Expiry,چند روز تا پایان بیمه‌نامه فعلی کاربر باقی مونده
+Price,قیمت پیشنهادی بیمه‌نامه
+Discount Percent,درصد تخفیف پیشنهاد
+Has Previous Purchase,آیا کاربر قبلاً خرید داشته یا نه
+Visited Offer Page,آیا کاربر به صفحه مشاهده Offerها رسیده یا نه
+Incoming Call Last 24h,آیا طی ۲۴ ساعت گذشته تماس ورودی مرتبط با کاربر داشتیم یا نه
+Sessions Last 7d,تعداد Sessionهای کاربر در ۷ روز گذشته
+Offer Views Last 7d,تعداد دفعاتی که کاربر طی ۷ روز گذشته Offer دیده
+Price Comparisons Last 7d,تعداد دفعات مقایسه قیمت در ۷ روز گذشته
+Days Since Last Visit,چند روز از آخرین مراجعه کاربر گذشته
+Expected Margin,Margin مورد انتظار در صورت انجام خرید
+Completed Purchase,آیا Lead در نهایت خریدش رو کامل کرده یا نه
