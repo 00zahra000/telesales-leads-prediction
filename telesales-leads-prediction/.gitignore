@@ -1,0 +1,46 @@
+# Local credentials and configuration; keep sample templates tracked.
+.env
+.env.*
+!.env.example
+!.env.sample
+!env.example
+!env.sample
+.aws/
+
+# Python bytecode, environments and tool caches.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.egg-info/
+build/
+dist/
+
+# Generated analysis, evaluation and model outputs.
+/reports/
+/analysis-report/
+/charts/
+/artifacts/
+/output-backup-*/
+
+# Notebook checkpoints, editor settings and operating-system files.
+.ipynb_checkpoints/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+__MACOSX/
+
+# Local logs.
+*.log
