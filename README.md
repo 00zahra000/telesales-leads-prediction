@@ -70,10 +70,30 @@ docker compose up -d --build
 docker compose logs -f app
 ```
 
-The app is a batch job and exits after completion. Compose creates the mounted
-output folders before the job runs; empty folders alone do not mean it succeeded.
-Check the app logs for a failed stage. After changing Python code, use `--build`
-to rebuild the image before rerunning the batch.
+### Expected container status after completion
+
+The app runs a single batch and exits after writing lead scores to PostgreSQL
+and passing the prediction coverage checks. Seeing the app as **Exited (0)** in
+`docker ps -a` is normal: exit code 0 means the pipeline completed successfully.
+The **db** container stays **Up** so reviewers can query the stored scores after
+the app finishes. The app does not need to keep running to preserve those scores;
+PostgreSQL stores them in the named `postgres_data` volume.
+
+Check the container status and completion log:
+
+```sh
+docker compose ps -a
+docker compose logs app
+```
+
+A successful run ends with `Pipeline complete: reports, charts, model and lead
+scores refreshed.` A nonzero app exit code indicates a failed stage; inspect the
+logs for the error. Compose creates the mounted output folders before the job
+runs, so empty folders alone do not mean it succeeded.
+
+After changing Python code, use `--build` to rebuild the image before rerunning
+the batch. When finished reviewing, stop the database with `docker compose down`;
+this preserves its named volume and the stored scores.
 
 Loguru writes concise, timestamped stage progress, output summaries and errors
 to the console. Detailed tables remain in the Markdown reports. Set
