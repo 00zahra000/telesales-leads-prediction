@@ -13,7 +13,7 @@ CSV → PostgreSQL raw_leads → analysis and feature assessment
                            → batch scoring → PostgreSQL lead_scores
 ```
 
-1. Reload the CSV with `src.load_data`.
+1. Reload the CSV with `src.load_data` and then writes it in a table.
 2. Generate EDA and feature assessments with `src.data_analysis`.
 3. Train, select, save and evaluate the model with `src.train`.
 4. Write the versioned queue with `src.predict`.
@@ -68,12 +68,6 @@ Run the entire batch:
 ```sh
 docker compose up -d --build
 docker compose logs -f app
-```
-
-A successful complete batch prints:
-
-```text
-Pipeline complete: reports, charts, model and lead scores refreshed.
 ```
 
 The app is a batch job and exits after completion. Compose creates the mounted
@@ -170,14 +164,25 @@ docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
 cat reports/modeling_report.md
 ```
 
-Read the version from `artifacts/model_metadata.json`, then query:
+After the batch finishes, run this command from the directory containing
+`docker-compose.yml` to view the top 20 leads from the latest scoring run.
+Priority **1** is highest; the query filters out older model versions.
 
-```sql
-SELECT lead_id, purchase_probability, priority, prediction_timestamp, model_version
+```sh
+docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+SELECT lead_id,
+       ROUND(purchase_probability::numeric, 4) AS probability,
+       priority
 FROM lead_scores
-WHERE model_version = '<model_version from metadata>'
+WHERE model_version = (
+    SELECT model_version
+    FROM lead_scores
+    ORDER BY prediction_timestamp DESC
+    LIMIT 1
+)
 ORDER BY priority
-LIMIT 100;
+LIMIT 20;
+SQL
 ```
 
 ## Limitations
