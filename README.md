@@ -81,6 +81,11 @@ output folders before the job runs; empty folders alone do not mean it succeeded
 Check the app logs for a failed stage. After changing Python code, use `--build`
 to rebuild the image before rerunning the batch.
 
+Loguru writes concise, timestamped stage progress, output summaries and errors
+to the console. Detailed tables remain in the Markdown reports. Set
+`LOG_LEVEL=DEBUG` in `.env` to include individual training-trial metrics;
+the default is `INFO`.
+
 The batch runs integration tests from `tests/`: database connectivity and CSV
 availability before ingestion, nonempty loaded data with the source row count
 after ingestion, and prediction coverage after scoring. Coverage checks use the

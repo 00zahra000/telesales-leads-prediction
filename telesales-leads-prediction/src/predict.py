@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import text
 
+from src.logging_config import logger
+
 from src.db import create_db_engine
 from src.features import SELECTED_FEATURES, prepare_features
 from src.train import ARTIFACTS
@@ -76,9 +78,8 @@ def main():
                                        {"version": metadata["model_version"]}).scalar_one()
             if count != len(scores):
                 raise ValueError("Stored scoring count does not match generated scores.")
-        print(f"Saved {len(scores):,} unique leads to PostgreSQL lead_scores, version={metadata['model_version']}.")
-        print(f"Collapsed {len(frame) - len(scores):,} repeated rows using latest created_at, then id.")
-        print(scores.head(10).to_string(index=False))
+        logger.success("Saved {:,} unique lead scores to PostgreSQL: version={}; collapsed {:,} repeated rows.",
+                       len(scores), metadata["model_version"], len(frame) - len(scores))
     finally:
         engine.dispose()
 

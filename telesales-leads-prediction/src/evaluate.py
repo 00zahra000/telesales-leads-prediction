@@ -13,6 +13,8 @@ from sklearn.metrics import (average_precision_score, brier_score_loss, confusio
                              f1_score, log_loss, precision_recall_curve, precision_score,
                              recall_score, roc_auc_score)
 
+from src.logging_config import logger
+
 from src.features import prepare_features
 
 CAPACITIES = [0.05, 0.10, 0.20]
@@ -164,14 +166,9 @@ def main():
     plot_evaluation(test[TARGET], {metadata["model_name"]: probability}, "test")
     comparison = comparison_table(metadata["validation_metrics"])
     final = comparison_table({metadata["model_name"]: metrics, "training_prior_reference": reference})
-    print("\nValidation comparison:\n", comparison.to_string(index=False))
-    print("\nFinal test metrics:\n", final.to_string(index=False))
-    print("\nTop-K test ranking (expected random ordering within score ties):\n",
-          ranking_table(metrics).to_string(index=False))
-    print("\nThreshold 0.5:", metrics["threshold_0.5"])
-    print("\nCalibration: mean predicted probability", metrics["mean_probability"],
-          "vs observed rate", metrics["positive_rate"],
-          "; quantile-bin absolute calibration error", metrics["calibration_error_8_quantile_bins"])
+    logger.info("Test evaluation: rows={:,}, ROC-AUC={:.4f}, AP={:.4f}, Recall@10%={:.4f}, Lift@10%={:.4f}.",
+                metrics["rows"], metrics["roc_auc"], metrics["average_precision"],
+                metrics["ranking"]["10%"]["recall"], metrics["ranking"]["10%"]["lift"])
     report = ["# Modeling results", "", "Features: " + ", ".join(metadata["features"]), "",
               "Conditional timing assumption: " + metadata["timing_assumption"], "",
               "## Split", "", markdown_table(pd.DataFrame(metadata["split"]["summary"])), "",
@@ -212,6 +209,7 @@ def main():
                    "![Test calibration](../charts/test_calibration.png)", "",
                    "![Test capacity ranking](../charts/test_top_k.png)", ""])
     (REPORTS / "modeling_report.md").write_text("\n".join(report), encoding="utf-8")
+    logger.success("Saved modeling report and test metrics: version={}.", metadata["model_version"])
 
 
 if __name__ == "__main__":

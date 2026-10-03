@@ -3,6 +3,8 @@
 import subprocess
 import sys
 
+from src.logging_config import logger
+
 
 STAGES = [
     ("Connection and source checks", ["-m", "unittest", "-v", "tests.test_connection", "tests.test_source_data"]),
@@ -17,13 +19,13 @@ STAGES = [
 
 def main():
     for label, arguments in STAGES:
-        print(f"\n=== {label} ===", flush=True)
+        logger.info("Starting stage: {}", label)
         result = subprocess.run([sys.executable, *arguments], check=False)
         if result.returncode:
-            print(f"Pipeline stopped: {label} failed (exit {result.returncode}).",
-                  file=sys.stderr, flush=True)
+            logger.error("Pipeline stopped: {} failed (exit {}).", label, result.returncode)
             return result.returncode if result.returncode > 0 else 128 - result.returncode
-    print("\nPipeline complete: reports, charts, model and lead scores refreshed.", flush=True)
+        logger.success("Completed stage: {}", label)
+    logger.success("Pipeline complete: reports, charts, model and lead scores refreshed.")
     return 0
 
 

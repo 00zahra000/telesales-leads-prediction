@@ -15,6 +15,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sqlalchemy import text
 
+from src.logging_config import logger
+
 from src.db import create_db_engine
 from src.features import (ATTRIBUTION_ASSUMPTION, CATEGORICAL_FEATURES, SELECTED_FEATURES,
                           EXCLUDED_AFTER_VALIDATION, FEATURE_SELECTION_REASON,
@@ -169,18 +171,18 @@ def save_interpretation(candidates):
 
 def main():
     # Import here to keep the standalone evaluation command independent of __main__.
-    from src.evaluate import (calibration_bins, comparison_table, compute_metrics, main as evaluate_saved,
+    from src.evaluate import (calibration_bins, compute_metrics, main as evaluate_saved,
                               plot_evaluation)
 
     for directory in [ARTIFACTS, REPORTS, CHARTS]:
         directory.mkdir(parents=True, exist_ok=True)
     frame = read_dataset()
     partitions, audit = split_dataset(frame)
-    print("Selected features:", SELECTED_FEATURES)
-    print("Feature selection:", FEATURE_SELECTION_REASON)
-    print("Conditional timing assumption:", ATTRIBUTION_ASSUMPTION)
-    print(pd.DataFrame(audit["summary"]).to_string(index=False))
-    print("Purged cross-period entities/rows:", audit["purged_entities"], audit["purged_rows"])
+    logger.info("Training with {} features; split rows: {}.", len(SELECTED_FEATURES),
+                {name: len(partition) for name, partition in partitions.items()})
+    if audit["purged_rows"]:
+        logger.warning("Purged {} rows from {} cross-period leads.",
+                       audit["purged_rows"], audit["purged_entities"])
     candidates, metrics, probabilities, chosen_trials = {}, {}, {}, {}
     trial_metrics = {}
     for trial in [1, 2, 3]:
@@ -189,15 +191,14 @@ def main():
             probability = pipeline.predict_proba(prepare_features(partitions["validation"]))[:, 1]
             result = compute_metrics(partitions["validation"][TARGET], probability)
             trial_metrics[f"{name}_trial_{trial}"] = result
-            print(f"Trial {trial} {name}: validation AP={result['average_precision']:.6f}, "
-                  f"Recall@10%={result['ranking']['10%']['recall']:.6f}", flush=True)
+            logger.debug("Trial {} {}: validation AP={:.6f}, Recall@10%={:.6f}.",
+                         trial, name, result["average_precision"], result["ranking"]["10%"]["recall"])
             if name not in metrics or validation_order(result) > validation_order(metrics[name]):
                 candidates[name], metrics[name], probabilities[name] = pipeline, result, probability
                 chosen_trials[name] = trial
-    comparison = comparison_table(metrics)
-    print("\nValidation comparison:\n", comparison.to_string(index=False))
     chosen, reason = select_model(metrics)
-    print("\nSelected:", chosen, "\n", reason)
+    logger.info("Selected {}: validation AP={:.6f}, Recall@10%={:.6f}.",
+                chosen, metrics[chosen]["average_precision"], metrics[chosen]["ranking"]["10%"]["recall"])
     plot_evaluation(partitions["validation"][TARGET], probabilities, "validation")
     interpretations = save_interpretation(candidates)
     joblib.dump(candidates[chosen], ARTIFACTS / "model.joblib")
@@ -229,9 +230,10 @@ def main():
         "probability_calibration": "Unweighted log-loss models; no post-hoc recalibration. See calibration diagnostics.",
         "python_version": platform.python_version(),
         "package_versions": {name: version(name) for name in
-                             ["pandas", "numpy", "scikit-learn", "catboost", "joblib", "SQLAlchemy"]},
+                             ["pandas", "numpy", "scikit-learn", "catboost", "joblib", "SQLAlchemy", "loguru"]},
     }
     (ARTIFACTS / "model_metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    logger.success("Saved model and metadata: version={}.", metadata["model_version"])
     evaluate_saved()
 
 

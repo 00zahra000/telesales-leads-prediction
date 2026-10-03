@@ -6,6 +6,8 @@ from pathlib import Path
 import pandas as pd
 from sqlalchemy import text
 
+from src.logging_config import logger
+
 from src.db import create_db_engine
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -37,9 +39,9 @@ def main():
                 "raw_leads", connection, if_exists="append", index=False,
                 chunksize=1000,
             )
-        print(f"Loaded {len(leads):,} rows into raw_leads.")
+        logger.success("Loaded {:,} rows into raw_leads.", len(leads))
     except Exception as exc:
-        print(f"Data loading failed: {exc}", file=sys.stderr)
+        logger.error("Data loading failed: {}", exc)
         return 1
     finally:
         if engine is not None:

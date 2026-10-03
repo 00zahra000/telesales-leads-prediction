@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import text
 
+from src.logging_config import logger
+
 from src.db import create_db_engine
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -58,8 +60,6 @@ def save_eda(leads):
     # Surrogate keys and load timestamps would hide duplicated source records.
     source = leads.drop(columns=["id", "loaded_at"], errors="ignore")
     repeated = leads.lead_id.notna() & leads.lead_id.duplicated(keep=False)
-    target = leads.completed_purchase.value_counts(dropna=False).rename_axis("completed_purchase").reset_index(name="rows")
-    target["pct_rows"] = target.rows / len(leads) * 100
     dates = leads.select_dtypes(include=["datetime", "datetimetz"])
     date_summary = pd.DataFrame({"column": dates.columns,
                                  "earliest": dates.min().values,
@@ -91,11 +91,6 @@ def save_eda(leads):
     sections.extend(["This step describes the raw dataset only. No imputation, deduplication, "
                      "feature selection, leakage assessment, or model fitting is performed.", ""])
     (REPORTS / "eda_report.md").write_text("\n".join(sections), encoding="utf-8")
-    print(f"Dataset: {len(leads):,} rows, {len(leads.columns)} columns.")
-    print("\nColumn overview:\n" + columns.to_string(index=False))
-    print("\nTarget counts:\n" + target.to_string(index=False))
-    print("\nTimestamp ranges:\n" + date_summary.to_string(index=False))
-    print(f"\nSaved basic EDA to {REPORTS / 'eda_report.md'}")
 
 
 def cramers_v(first, second):
@@ -281,9 +276,8 @@ def save_relationships(leads):
     ])
     with (REPORTS / "eda_report.md").open("a", encoding="utf-8") as report:
         report.write("\n" + "\n".join(sections))
-    print("\nPurchase-history groups:\n" + groups.to_string(index=False))
-    print("\nMajor feature-pair associations:\n" + major.to_string(index=False))
-    print(f"\nSaved grouped association analysis to {REPORTS / 'eda_report.md'}")
+    logger.success("Saved EDA report for {:,} rows and {} columns to {}.",
+                   len(leads), len(leads.columns), REPORTS / "eda_report.md")
 
 
 def main():
@@ -298,7 +292,7 @@ def main():
         save_eda(leads)
         save_relationships(leads)
     except Exception as exc:
-        print(f"EDA failed: {exc}", file=sys.stderr)
+        logger.error("EDA failed: {}", exc)
         return 1
     finally:
         if engine is not None:

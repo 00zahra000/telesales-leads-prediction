@@ -35,6 +35,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       DB_HOST: ${DB_HOST:?Set DB_HOST in .env}
       DB_PORT: ${DB_PORT:?Set DB_PORT in .env}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
     volumes:
       - ./data:/app/data:ro
