@@ -69,7 +69,6 @@ def save_eda(leads):
         "Source: PostgreSQL `raw_leads`, read in a read-only repeatable-read transaction.", "",
         f"Rows: **{len(leads):,}**. Columns: **{len(leads.columns)}**.", "",
         "## Columns", "", markdown_table(columns), "",
-        "## First five rows", "", markdown_table(leads.head()), "",
         "## Basic duplicate counts", "",
         f"- Duplicate source rows beyond the first: {int(source.duplicated().sum()):,}.",
         f"- Repeated nonmissing Lead IDs: {leads.loc[repeated, 'lead_id'].nunique():,}.",
@@ -78,7 +77,6 @@ def save_eda(leads):
         "## Numeric summaries", "",
         "Database surrogate `id` is omitted from numeric statistics; binary fields are included as stored.", "",
         markdown_table(numeric_summary), "",
-        "## Target counts", "", markdown_table(target), "",
         "## Timestamp ranges", "", markdown_table(date_summary), "",
         "## Categorical values", "",
         "Show the five most common values per categorical column, excluding the Lead ID identifier. "
@@ -231,10 +229,6 @@ def save_relationships(leads):
                 f"Purchase rate: **{positive_rate:.2%}**. Non-purchase/purchase count ratio: **{ratio:.2f}:1**.", "",
                 "These counts quantify imbalance; no weighting, resampling or cleaning is applied.", "",
                 "## Purchase-history groups", "", markdown_table(groups), "",
-                "## Major feature-pair associations", "",
-                "Numeric pairs are flagged at |Spearman| >= 0.7; nominal pairs at Cramer's V >= 0.5. "
-                "These are descriptive review thresholds, not significance tests or automatic exclusion rules.", "",
-                markdown_table(major) if not major.empty else "No pairs meet those review thresholds.", "",
                 "## Associations with the current purchase outcome", "",
                 "Compare methods separately: Spearman is signed, while Cramer's V is unsigned. "
                 "Category purchase rates below show direction and sample sizes.", ""]
@@ -244,26 +238,44 @@ def save_relationships(leads):
         targets = targets.sort_values(["method", "absolute_association"], ascending=[True, False]).drop(columns=["analysis", "major_pair", "absolute_association"])
         sections.extend([f"### has_previous_purchase={previous}", "", markdown_table(targets), ""])
     sections.extend(["## Interpretation limits", "",
-                     "Identifiers and timestamps are excluded from associations. Purchase history is constant "
-                     "inside each group and is not correlated with itself. Missing values are omitted per pair, "
-                     "with usable row counts reported; constant columns have undefined association. "
-                     "Numeric-nominal feature pairs are not measured here. Cramer's V is uncorrected and descriptive.", "",
-                     "Large feature-pair association suggests possible redundancy, not predictive value. "
-                     "Outcome associations nominate investigation candidates; weak marginal correlation does not "
-                     "rule out nonlinear effects. No feature is selected automatically. Check scoring-time "
-                     "availability and leakage before using any candidate, including prior-purchase history. "
-                     "Repeated Lead IDs affect independence; these are row-based exploratory findings, not "
-                     "causal effects or held-out validation results.", ""])
+                     "Associations describe observed relationships; they do not establish causation or model usefulness. "
+                     "Missing values are omitted per pair, and repeated lead IDs limit independence. "
+                     "Spearman is signed; Cramer's V is unsigned; numeric–categorical pairs are not measured.", ""])
     outliers = analyze_outliers(leads)
-    sections.extend(["## Category purchase rates", "", markdown_table(rates_table), "",
-                     "## Complete association results", "",
-                     markdown_table(association_table), ""])
+    if major.empty:
+        observation = "No measured feature pairs showed a strong association in either purchase-history group."
+    else:
+        pairs = []
+        for (first, second, method), pair in major.groupby(["column_1", "column_2", "method"]):
+            pairs.append(f"`{first}` and `{second}` ({method}: "
+                         f"{pair.association.min():.4f}–{pair.association.max():.4f})")
+        observation = "Strong associations were observed between " + "; ".join(pairs) + "."
+    category_summary = []
+    for (previous, feature), rates in rates_table.groupby([history, "feature"]):
+        eligible = rates.loc[rates.rows >= 100].sort_values(["purchase_rate", "rows", "category"],
+                                                          na_position="last")
+        if len(eligible) < 2:
+            continue
+        low, high = eligible.iloc[0], eligible.iloc[-1]
+        category_summary.append({history: previous, "feature": feature,
+                                 "lowest_rate_category": low.category, "lowest_rate_rows": low.rows,
+                                 "lowest_purchase_pct": low.purchase_rate * 100,
+                                 "highest_rate_category": high.category, "highest_rate_rows": high.rows,
+                                 "highest_purchase_pct": high.purchase_rate * 100})
+    sections.extend(["## Category purchase-rate summary", "",
+                     "For each feature and purchase-history group, show the lowest and highest observed "
+                     "purchase rates among categories with at least 100 rows; this reporting cutoff reduces "
+                     "emphasis on small groups and does not establish statistical significance. Rates are percentages.", "",
+                     markdown_table(pd.DataFrame(category_summary)), "",
+                     "## Association observations", "", observation + " "
+                     "All other measured feature pairs with a defined association fell below the review thresholds "
+                     "of absolute Spearman correlation 0.7 or Cramer's V 0.5.", ""])
     sections.extend([
         "## Outlier / extreme-value analysis", "",
-        "For each nonmissing numeric predictor: IQR = Q3 - Q1; lower fence = Q1 - 1.5 × IQR; "
-        "upper fence = Q3 + 1.5 × IQR. Counts use strict inequalities; percentages use observed values. "
-        "IDs, target and the three binary flags are excluded. Missing values are neither imputed nor counted as extremes.", "",
-        markdown_table(outliers), "",
+        "Values beyond 1.5 × IQR from the lower or upper quartile are flagged for review. "
+        "Percentages use nonmissing values; identifiers, the target and binary flags are excluded.", "",
+        markdown_table(outliers[["feature", "outside_fences", "outside_pct", "business_interpretation"]]
+                       .rename(columns={"outside_fences": "flagged_rows", "outside_pct": "flagged_pct"})), "",
         "These are investigation flags, not data-error labels. No values are removed, clipped or transformed. "
         "Pooled fences can reflect product mix, skew and discrete counts; investigate context before acting.", "",
     ])

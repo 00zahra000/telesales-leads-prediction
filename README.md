@@ -130,13 +130,13 @@ Training compares three settings per family:
 | Logistic Regression | C = 1.0, 0.1, 10.0; maximum 1,000 iterations |
 | CatBoost | (iterations, depth, learning rate, L2): (200, 3, 0.05, 5), (300, 2, 0.03, 10), (400, 4, 0.03, 20) |
 
-Both families use seed 42. CatBoost uses one CPU thread. No resampling, class weighting or post-hoc probability calibration is applied.
+Both models use a fixed random seed for reproducible runs. Training keeps the original class balance and does not adjust predicted probabilities afterward.
 
-Each family keeps its best validation Average Precision, breaking ties with Top-10% recall, then Brier score and log loss. CatBoost is selected only when its validation AP improves by at least 0.002, Top-10% recall and lift do not decline, and Brier/log-loss degradation stays within 0.001/0.01. Otherwise Logistic Regression is selected. The winner remains fitted on training data only; there is no train-plus-validation refit.
+The best settings for each model are chosen using validation data, with Average Precision as the main metric. CatBoost wins only if it passes the improvement checks for ranking and probability quality; otherwise, the simpler Logistic Regression model is selected. The selected model stays trained on the training data only.
 
-The selected pipeline is saved and reloaded, and its validation probabilities are checked before test evaluation. Evaluation verifies a fingerprint of the PostgreSQL dataset against training metadata. Metrics include ROC-AUC, Average Precision, log loss, Brier score, calibration diagnostics and precision/recall/lift at Top 5%, 10% and 20%. Capacity counts use `ceil(fraction × rows)`; boundary ties use expected purchasers under random ordering. The fixed 0.5 threshold is diagnostic, while the queue is ordered by probability.
+The saved model is reloaded and checked before evaluation on the separate test data. Evaluation also checks that the database data have not changed since training. Results show how well the model ranks leads, how reliable its probabilities are, and how many purchasers are captured by contacting the highest-scoring 5%, 10%, or 20% of leads. The sales queue is ordered by purchase probability.
 
-Current results belong in generated reports rather than fixed README metrics: inspect `reports/modeling_report.md` after your run.
+See `reports/modeling_report.md` for the results and detailed selection rules from your latest run. Exact selection checks are implemented in `src/train.py`.
 
 ## Scoring and outputs
 
@@ -154,7 +154,7 @@ Scoring reads the saved model and metadata, rejects a feature-list mismatch, and
 Metadata records model version, UTC training time, features, timing assumptions, split audit, dataset fingerprint, parameters, package versions and validation metrics. Test results and their training-prior reference are stored separately in `artifacts/test_metrics.json`, labeled with the model version, and summarized in `reports/modeling_report.md`. Existing historical reports or feature-ablation artifacts are not recreated by the current pipeline. Output folders are created as needed; reruns overwrite current report/model files without clearing unrelated files.
 
 Informational CSV exports are not generated. Their tables are consolidated into
-the two Markdown reports, including complete association results. Artifacts
+the two Markdown reports, with feature-pair associations summarized in two sentences. Artifacts
 contain the saved model and JSON data needed by training, evaluation and scoring.
 
 To inspect database counts while PostgreSQL is running:
@@ -177,4 +177,5 @@ LIMIT 100;
 
 ## Limitations
 
-Scores cover the historical dataset, including completed purchases, and demonstrate retrospective batch output. Live contact eligibility, frozen scoring inputs and outcome maturity are not implemented. Synthetic data, temporal prevalence changes and within-period repeated leads limit interpretation. All-data exploration preceded the holdout; validation feature selection is historical, and this is not a fresh prospective evaluation. Purchase propensity does not measure causal contact uplift. Automated monitoring, alerts, feedback and retraining are not implemented.
+- **Ongoing maintenance:** Automatic monitoring and retraining aren’t implemented.
+- **Shared model across insurance products:** Third-party and car-body insurance use the same pipeline and model. With more time, separate pipelines could be developed and evaluated for each product to account for differences in customer behavior.
