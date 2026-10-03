@@ -16,7 +16,7 @@ from src.db import create_db_engine
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPORTS = PROJECT_ROOT / "reports"
 CHARTS = PROJECT_ROOT / "charts"
-ANALYSIS_REPORT = PROJECT_ROOT / "analysis-report"
+ARTIFACTS = PROJECT_ROOT / "artifacts"
 
 
 def load_raw_leads(connection):
@@ -93,8 +93,6 @@ def save_eda(leads):
         sections.extend([f"### {column}", "", markdown_table(counts), ""])
     sections.extend(["This step describes the raw dataset only. No imputation, deduplication, "
                      "feature selection, leakage assessment, or model fitting is performed.", ""])
-    columns.to_csv(REPORTS / "eda_columns.csv", index=False)
-    numeric_summary.to_csv(REPORTS / "eda_numeric_summary.csv", index=False)
     (REPORTS / "eda_report.md").write_text("\n".join(sections), encoding="utf-8")
     print(f"Dataset: {len(leads):,} rows, {len(leads.columns)} columns.")
     print("\nColumn overview:\n" + columns.to_string(index=False))
@@ -260,11 +258,6 @@ def save_relationships(leads):
             plt.close(fig)
     association_table = pd.DataFrame(associations)
     rates_table = pd.concat(category_rates, ignore_index=True) if category_rates else pd.DataFrame()
-    for table, filename in [(distribution, "eda_target_distribution.csv"),
-                            (groups, "eda_purchase_history_summary.csv"),
-                            (association_table, "eda_associations.csv"),
-                            (rates_table, "eda_category_purchase_rates.csv")]:
-        table.to_csv(REPORTS / filename, index=False)
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.bar(["No completed purchase", "Completed purchase"], counts.values)
     ax.set(ylabel="Leads", title="Current purchase outcome distribution")
@@ -290,7 +283,7 @@ def save_relationships(leads):
                 markdown_table(major) if not major.empty else "No pairs meet those review thresholds.", "",
                 "## Associations with the current purchase outcome", "",
                 "Compare methods separately: Spearman is signed, while Cramer's V is unsigned. "
-                "Category purchase rates are saved separately to show direction and sample sizes.", ""]
+                "Category purchase rates below show direction and sample sizes.", ""]
     for previous in groups[history]:
         targets = association_table.loc[(association_table[history] == previous) & association_table.analysis.eq("feature_target")].copy()
         targets["absolute_association"] = targets.association.abs()
@@ -307,11 +300,11 @@ def save_relationships(leads):
                      "availability and leakage before using any candidate, including prior-purchase history. "
                      "Repeated Lead IDs affect independence; these are row-based exploratory findings, not "
                      "causal effects or held-out validation results.", ""])
-    ANALYSIS_REPORT.mkdir(parents=True, exist_ok=True)
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
     outliers = analyze_outliers(leads)
     assessment = assess_feature_leakage(leads)
-    outliers.to_csv(ANALYSIS_REPORT / "eda_outliers.csv", index=False)
-    assessment.to_csv(REPORTS / "feature_assessment.csv", index=False)
+    assessment.to_json(ARTIFACTS / "feature_assessment.json", orient="records", indent=2)
+    sections.extend(["## Category purchase rates", "", markdown_table(rates_table), ""])
     sections.extend([
         "## Outlier / extreme-value analysis", "",
         "For each nonmissing numeric predictor: IQR = Q3 - Q1; lower fence = Q1 - 1.5 × IQR; "
@@ -334,10 +327,11 @@ def save_relationships(leads):
         "cutoffs and arrival latency, strictly prior purchase history, margin inputs, and target observation horizon. "
         "Correlations with the target cannot establish whether a feature leaks future information.", "",
     ])
-    (ANALYSIS_REPORT / "eda_relationships.md").write_text("\n".join(sections), encoding="utf-8")
+    with (REPORTS / "eda_report.md").open("a", encoding="utf-8") as report:
+        report.write("\n" + "\n".join(sections))
     print("\nPurchase-history groups:\n" + groups.to_string(index=False))
     print("\nMajor feature-pair associations:\n" + major.to_string(index=False))
-    print(f"\nSaved grouped association analysis to {ANALYSIS_REPORT / 'eda_relationships.md'}")
+    print(f"\nSaved grouped association analysis to {REPORTS / 'eda_report.md'}")
 
 
 def main():

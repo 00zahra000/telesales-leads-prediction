@@ -5,11 +5,13 @@ import sys
 
 
 STAGES = [
-    ("Tests", ["-m", "unittest", "discover", "-s", "tests"]),
+    ("Connection and source checks", ["-m", "unittest", "-v", "tests.test_connection", "tests.test_source_data"]),
     ("Load data", ["-m", "src.load_data"]),
+    ("Loaded data checks", ["-m", "unittest", "-v", "tests.test_loaded_data"]),
     ("Analyze data", ["-m", "src.data_analysis"]),
     ("Train and evaluate", ["-m", "src.train"]),
     ("Score leads", ["-m", "src.predict"]),
+    ("Prediction coverage checks", ["-m", "unittest", "-v", "tests.test_prediction_scores"]),
 ]
 
 

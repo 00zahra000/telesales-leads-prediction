@@ -45,7 +45,7 @@ telesales-leads-prediction/
 └── requirements.txt
 ```
 
-Analysis and training create `reports/`, `analysis-report/`, `charts/` and `artifacts/`. Compose mounts those directories on the host and mounts `data/` read-only.
+Analysis and training create `reports/`, `charts/` and `artifacts/`. Compose mounts those directories on the host and mounts `data/` read-only.
 
 ## Configuration
 
@@ -66,13 +66,32 @@ Requires Docker and Docker Compose v2. The image uses Python 3.12 and the databa
 Run the entire batch:
 
 ```sh
-docker compose up -d
+docker compose up -d --build
+docker compose logs -f app
 ```
 
 A successful complete batch prints:
 
 ```text
 Pipeline complete: reports, charts, model and lead scores refreshed.
+```
+
+The app is a batch job and exits after completion. Compose creates the mounted
+output folders before the job runs; empty folders alone do not mean it succeeded.
+Check the app logs for a failed stage. After changing Python code, use `--build`
+to rebuild the image before rerunning the batch.
+
+The batch runs integration tests from `tests/`: database connectivity and CSV
+availability before ingestion, nonempty loaded data with the source row count
+after ingestion, and prediction coverage after scoring. Coverage checks use the
+current model version and require exactly one valid probability per unique lead
+ID, including repeated source rows through their shared lead ID. A failed check
+stops the batch with a nonzero exit status.
+
+To rerun all checks after a completed batch:
+
+```sh
+docker compose run --rm app python -m unittest discover -s tests -v
 ```
 
 `sql/init.sql` creates tables only when PostgreSQL initializes an empty volume. SQL edits do not migrate an existing database. `docker compose down -v` deletes the database volume; use it only for an intentional reset.
@@ -82,7 +101,7 @@ Pipeline complete: reports, charts, model and lead scores refreshed.
 
 Each ingestion truncates `raw_leads`, resets surrogate IDs and inserts the CSV in one transaction. A failed insert rolls back. It preserves repeated lead IDs and raw values; empty CSV fields become SQL NULL, literal text such as `NA` stays text, column names become snake_case and creation dates are parsed.
 
-Analysis produces dataset and column summaries, target imbalance, purchase-history group summaries, Spearman correlations and categorical associations using Cramér's V. Numeric outliers use 1.5 × IQR fences with investigation notes; values are not removed or clipped. The scoring-time assessment writes `reports/feature_assessment.csv`. Training requires every selected feature to have an `INCLUDE` recommendation in that assessment.
+Analysis produces dataset and column summaries, target imbalance, purchase-history group summaries, Spearman correlations and categorical associations using Cramér's V. Numeric outliers use 1.5 × IQR fences with investigation notes; values are not removed or clipped. The scoring-time assessment includes the feature assessment in `reports/eda_report.md` and saves its machine-readable form in `artifacts/feature_assessment.json`. Training requires every selected feature to have an `INCLUDE` recommendation in `artifacts/feature_assessment.json`.
 
 ## Features and preprocessing
 
@@ -117,7 +136,7 @@ Each family keeps its best validation Average Precision, breaking ties with Top-
 
 The selected pipeline is saved and reloaded, and its validation probabilities are checked before test evaluation. Evaluation verifies a fingerprint of the PostgreSQL dataset against training metadata. Metrics include ROC-AUC, Average Precision, log loss, Brier score, calibration diagnostics and precision/recall/lift at Top 5%, 10% and 20%. Capacity counts use `ceil(fraction × rows)`; boundary ties use expected purchasers under random ordering. The fixed 0.5 threshold is diagnostic, while the queue is ordered by probability.
 
-Current results belong in generated reports rather than fixed README metrics: inspect `reports/modeling_report.md`, `reports/validation_model_comparison.csv` and `reports/test_ranking_metrics.csv` after your run.
+Current results belong in generated reports rather than fixed README metrics: inspect `reports/modeling_report.md` after your run.
 
 ## Scoring and outputs
 
@@ -127,10 +146,9 @@ Scoring reads the saved model and metadata, rejects a feature-list mismatch, and
 
 | Location | Generated content |
 | --- | --- |
-| `reports/` | Basic EDA, group distributions/associations, feature assessment, split audit, modeling feature decisions, six validation trials, model comparisons, interpretation CSVs, calibration CSVs, test metrics and modeling report |
-| `analysis-report/` | `eda_relationships.md` and `eda_outliers.csv` |
+| `reports/` | Two consolidated Markdown files: `eda_report.md` (dataset, associations, category rates, outliers and leakage assessment) and `modeling_report.md` (splits, feature decisions, validation trials, model selection, interpretation, calibration and test metrics) |
 | `charts/` | Three EDA charts, validation/test PR, calibration and Top-K charts, plus Logistic Regression coefficient chart |
-| `artifacts/` | `model.joblib` and `model_metadata.json` |
+| `artifacts/` | `model.joblib`, `model_metadata.json` and machine-readable `feature_assessment.json` used by training |
 | PostgreSQL `lead_scores` | Versioned unique-lead probability queue |
 
 Metadata records model version, UTC training time, features, timing assumptions, split audit, dataset fingerprint, parameters, package versions and validation/test metrics. Existing historical reports or feature-ablation artifacts are not recreated by the current pipeline. Output folders are created as needed; reruns overwrite current report/model files without clearing unrelated files.

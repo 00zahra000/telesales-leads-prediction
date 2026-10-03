@@ -108,7 +108,6 @@ def plot_evaluation(y, probabilities, partition):
                         label=f"{name}: PR-AUC (AP) = {ap:.4f}")
             else:
                 bins = calibration_bins(y, probability)
-                bins.to_csv(REPORTS / f"{partition}_{name}_calibration.csv", index=False)
                 ax.plot(bins.mean_probability, bins.observed_rate, "o-", label=name)
         if kind == "precision_recall":
             ax.axhline(np.mean(y), color="black", linestyle="--",
@@ -155,8 +154,6 @@ def main():
     metadata["test_metrics"] = metrics
     metadata["training_prior_test_reference"] = reference
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
-    (REPORTS / "test_metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
-    ranking_table(metrics).to_csv(REPORTS / "test_ranking_metrics.csv", index=False)
     plot_evaluation(test[TARGET], {metadata["model_name"]: probability}, "test")
     comparison = comparison_table(metadata["validation_metrics"])
     final = comparison_table({metadata["model_name"]: metrics, "training_prior_reference": reference})
@@ -189,7 +186,24 @@ def main():
               "August prevalence decline and unknown label maturity limit probability transportability. "
               "All-data EDA preceded this holdout: test is withheld from fitting/selection, but not a pristine "
               "prospective evaluation. Validate on newly collected, mature outcomes before deployment.", ""]
-    (REPORTS / "modeling_report.md").write_text("\n".join(report))
+    report.extend(["## Validation trials", "",
+                   markdown_table(comparison_table(metadata["hyperparameter_trials"]["validation_metrics"])), "",
+                   "## Modeling feature decisions", "",
+                   markdown_table(pd.DataFrame(metadata.get("feature_assessment", []))), ""])
+    for name, rows in metadata.get("interpretations", {}).items():
+        report.extend([f"## Feature interpretation: {name}", "",
+                       "Logistic values are centered log-odds coefficients within each categorical field; "
+                       "numeric values use standardized inputs. CatBoost values are feature importances. "
+                       "These describe the fitted models, not causal effects.", "",
+                       markdown_table(pd.DataFrame(rows)), ""])
+    for name, rows in metadata.get("validation_calibration", {}).items():
+        report.extend([f"## Validation calibration: {name}", "", markdown_table(pd.DataFrame(rows)), ""])
+    report.extend(["## Test calibration", "", markdown_table(calibration_bins(test[TARGET], probability)), "",
+                   "## Charts", "",
+                   "![Test precision–recall](../charts/test_precision_recall.png)", "",
+                   "![Test calibration](../charts/test_calibration.png)", "",
+                   "![Test capacity ranking](../charts/test_top_k.png)", ""])
+    (REPORTS / "modeling_report.md").write_text("\n".join(report), encoding="utf-8")
 
 
 if __name__ == "__main__":

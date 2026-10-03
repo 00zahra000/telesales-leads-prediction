@@ -140,6 +140,7 @@ def save_interpretation(candidates):
     from src.evaluate import save_figure
     import matplotlib.pyplot as plt
 
+    interpretations = {}
     for name, pipeline in candidates.items():
         names = pipeline.named_steps["preprocess"].get_feature_names_out()
         model = pipeline.named_steps["model"]
@@ -154,7 +155,7 @@ def save_interpretation(candidates):
                 mask = table.feature.str.startswith(f"categorical__{column}_")
                 table.loc[mask, "value"] -= table.loc[mask, "value"].mean()
         table = table.sort_values("value")
-        table.to_csv(REPORTS / f"{name}_interpretation.csv", index=False)
+        interpretations[name] = table.to_dict(orient="records")
         if name != "logistic_regression":
             continue
         fig, ax = plt.subplots(figsize=(9, max(5, len(table) * 0.28)))
@@ -163,17 +164,19 @@ def save_interpretation(candidates):
         ax.set_title(name.replace("_", " "))
         save_figure(fig, CHARTS / f"{name}_importance.png")
 
+    return interpretations
+
 
 def main():
     # Import here to keep the standalone evaluation command independent of __main__.
-    from src.evaluate import (comparison_table, compute_metrics, main as evaluate_saved,
+    from src.evaluate import (calibration_bins, comparison_table, compute_metrics, main as evaluate_saved,
                               plot_evaluation)
 
     for directory in [ARTIFACTS, REPORTS, CHARTS]:
         directory.mkdir(parents=True, exist_ok=True)
     frame = read_dataset()
     partitions, audit = split_dataset(frame)
-    assessment = pd.read_csv(REPORTS / "feature_assessment.csv")
+    assessment = pd.read_json(ARTIFACTS / "feature_assessment.json")
     indexed_assessment = assessment.set_index("feature_name")
     for feature in SELECTED_FEATURES:
         if feature not in indexed_assessment.index or indexed_assessment.loc[feature, "recommendation"] != "INCLUDE":
@@ -186,8 +189,6 @@ def main():
                    "modeling_decision"] = "INCLUDE CONDITIONALLY: assumed pre-score snapshot"
     assessment.loc[assessment.feature_name.isin(EXCLUDED_AFTER_VALIDATION),
                    "modeling_decision"] = "EXCLUDE: validation feature reduction"
-    assessment.to_csv(REPORTS / "modeling_feature_decisions.csv", index=False)
-    pd.DataFrame(audit["summary"]).to_csv(REPORTS / "model_split_summary.csv", index=False)
     print("Selected features:", SELECTED_FEATURES)
     print("Feature selection:", FEATURE_SELECTION_REASON)
     print("Conditional timing assumption:", ATTRIBUTION_ASSUMPTION)
@@ -206,20 +207,23 @@ def main():
             if name not in metrics or validation_order(result) > validation_order(metrics[name]):
                 candidates[name], metrics[name], probabilities[name] = pipeline, result, probability
                 chosen_trials[name] = trial
-    comparison_table(trial_metrics).to_csv(REPORTS / "validation_hyperparameter_trials.csv", index=False)
     comparison = comparison_table(metrics)
-    comparison.to_csv(REPORTS / "validation_model_comparison.csv", index=False)
     print("\nValidation comparison:\n", comparison.to_string(index=False))
     chosen, reason = select_model(metrics)
     print("\nSelected:", chosen, "\n", reason)
     plot_evaluation(partitions["validation"][TARGET], probabilities, "validation")
-    save_interpretation(candidates)
+    interpretations = save_interpretation(candidates)
     joblib.dump(candidates[chosen], ARTIFACTS / "model.joblib")
     # Reload and verify the actual persisted pipeline before evaluating test.
     saved = joblib.load(ARTIFACTS / "model.joblib")
     np.testing.assert_allclose(saved.predict_proba(prepare_features(partitions["validation"]))[:, 1],
                                probabilities[chosen], rtol=0, atol=1e-12)
     metadata = {
+        "feature_assessment": assessment.to_dict(orient="records"),
+        "interpretations": interpretations,
+        "validation_calibration": {name: calibration_bins(partitions["validation"][TARGET], probability)
+                                   .assign(bin=lambda table: table["bin"].astype(str)).to_dict(orient="records")
+                                   for name, probability in probabilities.items()},
         "model_name": chosen, "model_version": datetime.now(timezone.utc).strftime("v2-%Y%m%dT%H%M%S%fZ"),
         "training_timestamp": datetime.now(timezone.utc).isoformat(),
         "random_state": RANDOM_STATE, "features": SELECTED_FEATURES,
