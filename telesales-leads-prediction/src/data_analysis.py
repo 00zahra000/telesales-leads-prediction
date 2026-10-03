@@ -304,7 +304,9 @@ def save_relationships(leads):
     outliers = analyze_outliers(leads)
     assessment = assess_feature_leakage(leads)
     assessment.to_json(ARTIFACTS / "feature_assessment.json", orient="records", indent=2)
-    sections.extend(["## Category purchase rates", "", markdown_table(rates_table), ""])
+    sections.extend(["## Category purchase rates", "", markdown_table(rates_table), "",
+                     "## Complete association results", "",
+                     markdown_table(association_table), ""])
     sections.extend([
         "## Outlier / extreme-value analysis", "",
         "For each nonmissing numeric predictor: IQR = Q3 - Q1; lower fence = Q1 - 1.5 × IQR; "

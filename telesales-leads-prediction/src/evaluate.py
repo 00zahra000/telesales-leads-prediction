@@ -176,6 +176,7 @@ def main():
               "Precision and conversion rate are the same quantity. Top-K uses ceil(capacity × rows). "
               "Boundary score ties are averaged over random contact ordering; captured purchasers can be fractional.", "",
               "## Probability and threshold diagnostics", "",
+              f"Test rows: {metrics['rows']:,}; ROC-AUC: {metrics['roc_auc']:.4f}.", "",
               f"Mean predicted probability: {metrics['mean_probability']:.4f}; observed: {metrics['positive_rate']:.4f}. "
               f"Eight-quantile-bin absolute calibration error: {metrics['calibration_error_8_quantile_bins']:.4f} "
               "(descriptive, sensitive to bins). No post-hoc calibration was fitted. "

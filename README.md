@@ -153,6 +153,10 @@ Scoring reads the saved model and metadata, rejects a feature-list mismatch, and
 
 Metadata records model version, UTC training time, features, timing assumptions, split audit, dataset fingerprint, parameters, package versions and validation/test metrics. Existing historical reports or feature-ablation artifacts are not recreated by the current pipeline. Output folders are created as needed; reruns overwrite current report/model files without clearing unrelated files.
 
+Informational CSV exports are not generated. Their tables are consolidated into
+the two Markdown reports, including complete association results. Artifacts
+contain the saved model and JSON data needed by training, evaluation and scoring.
+
 To inspect database counts while PostgreSQL is running:
 
 ```sh
