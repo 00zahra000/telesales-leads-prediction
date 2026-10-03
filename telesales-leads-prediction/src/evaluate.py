@@ -203,11 +203,7 @@ def main():
                        markdown_table(pd.DataFrame(rows)), ""])
     for name, rows in metadata.get("validation_calibration", {}).items():
         report.extend([f"## Validation calibration: {name}", "", markdown_table(pd.DataFrame(rows)), ""])
-    report.extend(["## Test calibration", "", markdown_table(calibration_bins(test[TARGET], probability)), "",
-                   "## Charts", "",
-                   "![Test precision–recall](../charts/test_precision_recall.png)", "",
-                   "![Test calibration](../charts/test_calibration.png)", "",
-                   "![Test capacity ranking](../charts/test_top_k.png)", ""])
+    report.extend(["## Test calibration", "", markdown_table(calibration_bins(test[TARGET], probability)), ""])
     (REPORTS / "modeling_report.md").write_text("\n".join(report), encoding="utf-8")
     logger.success("Saved modeling report and test metrics: version={}.", metadata["model_version"])
 
