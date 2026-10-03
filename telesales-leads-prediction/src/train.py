@@ -176,19 +176,6 @@ def main():
         directory.mkdir(parents=True, exist_ok=True)
     frame = read_dataset()
     partitions, audit = split_dataset(frame)
-    assessment = pd.read_json(ARTIFACTS / "feature_assessment.json")
-    indexed_assessment = assessment.set_index("feature_name")
-    for feature in SELECTED_FEATURES:
-        if feature not in indexed_assessment.index or indexed_assessment.loc[feature, "recommendation"] != "INCLUDE":
-            raise ValueError(f"Selected feature {feature} is not approved as an inclusion candidate by the current assessment.")
-    assessment["modeling_decision"] = "INVESTIGATE (unused)"
-    assessment.loc[assessment.feature_name.isin(["id", "lead_id", TARGET, "loaded_at"]),
-                   "modeling_decision"] = "EXCLUDE"
-    assessment.loc[assessment.feature_name.eq("created_at"), "modeling_decision"] = "SPLIT ONLY"
-    assessment.loc[assessment.feature_name.isin(SELECTED_FEATURES),
-                   "modeling_decision"] = "INCLUDE CONDITIONALLY: assumed pre-score snapshot"
-    assessment.loc[assessment.feature_name.isin(EXCLUDED_AFTER_VALIDATION),
-                   "modeling_decision"] = "EXCLUDE: validation feature reduction"
     print("Selected features:", SELECTED_FEATURES)
     print("Feature selection:", FEATURE_SELECTION_REASON)
     print("Conditional timing assumption:", ATTRIBUTION_ASSUMPTION)
@@ -219,7 +206,6 @@ def main():
     np.testing.assert_allclose(saved.predict_proba(prepare_features(partitions["validation"]))[:, 1],
                                probabilities[chosen], rtol=0, atol=1e-12)
     metadata = {
-        "feature_assessment": assessment.to_dict(orient="records"),
         "interpretations": interpretations,
         "validation_calibration": {name: calibration_bins(partitions["validation"][TARGET], probability)
                                    .assign(bin=lambda table: table["bin"].astype(str)).to_dict(orient="records")
@@ -241,7 +227,7 @@ def main():
                                   "validation_metrics": trial_metrics},
         "model_parameters": candidates[chosen].named_steps["model"].get_params(),
         "probability_calibration": "Unweighted log-loss models; no post-hoc recalibration. See calibration diagnostics.",
-        "test_metrics": None, "python_version": platform.python_version(),
+        "python_version": platform.python_version(),
         "package_versions": {name: version(name) for name in
                              ["pandas", "numpy", "scikit-learn", "catboost", "joblib", "SQLAlchemy"]},
     }

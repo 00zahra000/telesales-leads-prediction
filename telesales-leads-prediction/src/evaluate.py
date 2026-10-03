@@ -151,9 +151,16 @@ def main():
     # A training-prior reference reveals whether weak acquisition signals add value.
     prior = float(partitions["train"][TARGET].mean())
     reference = compute_metrics(test[TARGET], np.full(len(test), prior))
-    metadata["test_metrics"] = metrics
-    metadata["training_prior_test_reference"] = reference
-    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
+    test_results = {**metrics, "model_version": metadata["model_version"],
+                    "training_prior_test_reference": reference}
+    (ARTIFACTS / "test_metrics.json").write_text(
+        json.dumps(test_results, indent=2) + "\n", encoding="utf-8")
+    # Migrate metadata created before test results had a separate artifact.
+    obsolete = [key for key in ("test_metrics", "training_prior_test_reference") if key in metadata]
+    if obsolete:
+        for key in obsolete:
+            del metadata[key]
+        metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     plot_evaluation(test[TARGET], {metadata["model_name"]: probability}, "test")
     comparison = comparison_table(metadata["validation_metrics"])
     final = comparison_table({metadata["model_name"]: metrics, "training_prior_reference": reference})
@@ -189,8 +196,8 @@ def main():
               "prospective evaluation. Validate on newly collected, mature outcomes before deployment.", ""]
     report.extend(["## Validation trials", "",
                    markdown_table(comparison_table(metadata["hyperparameter_trials"]["validation_metrics"])), "",
-                   "## Modeling feature decisions", "",
-                   markdown_table(pd.DataFrame(metadata.get("feature_assessment", []))), ""])
+                   "Feature selection reason: " + metadata["feature_selection_reason"], "",
+                   "Excluded after validation: " + ", ".join(metadata["excluded_after_validation"]), ""])
     for name, rows in metadata.get("interpretations", {}).items():
         report.extend([f"## Feature interpretation: {name}", "",
                        "Logistic values are centered log-odds coefficients within each categorical field; "

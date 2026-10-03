@@ -33,7 +33,7 @@ telesales-leads-prediction/
 ├── src/
 │   ├── db.py                 # database connection from environment variables
 │   ├── load_data.py          # transactional CSV reload
-│   ├── data_analysis.py      # EDA, associations, outliers and leakage assessment
+│   ├── data_analysis.py      # EDA, associations, outliers
 │   ├── features.py           # shared feature selection and preprocessing
 │   ├── train.py              # chronological split, model selection and artifacts
 │   ├── evaluate.py           # saved-model test evaluation
@@ -101,7 +101,7 @@ docker compose run --rm app python -m unittest discover -s tests -v
 
 Each ingestion truncates `raw_leads`, resets surrogate IDs and inserts the CSV in one transaction. A failed insert rolls back. It preserves repeated lead IDs and raw values; empty CSV fields become SQL NULL, literal text such as `NA` stays text, column names become snake_case and creation dates are parsed.
 
-Analysis produces dataset and column summaries, target imbalance, purchase-history group summaries, Spearman correlations and categorical associations using Cramér's V. Numeric outliers use 1.5 × IQR fences with investigation notes; values are not removed or clipped. The scoring-time assessment includes the feature assessment in `reports/eda_report.md` and saves its machine-readable form in `artifacts/feature_assessment.json`. Training requires every selected feature to have an `INCLUDE` recommendation in `artifacts/feature_assessment.json`.
+Analysis produces dataset and column summaries, target imbalance, purchase-history group summaries, Spearman correlations and categorical associations using Cramér's V. Numeric outliers use 1.5 × IQR fences with investigation notes; values are not removed or clipped. Training uses the fixed feature lists in `src.features`; their selection reasons and timing assumptions are documented below. No separate feature assessment is generated or required.
 
 ## Features and preprocessing
 
@@ -146,12 +146,12 @@ Scoring reads the saved model and metadata, rejects a feature-list mismatch, and
 
 | Location | Generated content |
 | --- | --- |
-| `reports/` | Two consolidated Markdown files: `eda_report.md` (dataset, associations, category rates, outliers and leakage assessment) and `modeling_report.md` (splits, feature decisions, validation trials, model selection, interpretation, calibration and test metrics) |
+| `reports/` | Two consolidated Markdown files: `eda_report.md` (dataset, associations, category rates, outliers) and `modeling_report.md` (splits, feature decisions, validation trials, model selection, interpretation, calibration and test metrics) |
 | `charts/` | Three EDA charts, validation/test PR, calibration and Top-K charts, plus Logistic Regression coefficient chart |
-| `artifacts/` | `model.joblib`, `model_metadata.json` and machine-readable `feature_assessment.json` used by training |
+| `artifacts/` | `model.joblib`, `model_metadata.json`, separate `test_metrics.json` |
 | PostgreSQL `lead_scores` | Versioned unique-lead probability queue |
 
-Metadata records model version, UTC training time, features, timing assumptions, split audit, dataset fingerprint, parameters, package versions and validation/test metrics. Existing historical reports or feature-ablation artifacts are not recreated by the current pipeline. Output folders are created as needed; reruns overwrite current report/model files without clearing unrelated files.
+Metadata records model version, UTC training time, features, timing assumptions, split audit, dataset fingerprint, parameters, package versions and validation metrics. Test results and their training-prior reference are stored separately in `artifacts/test_metrics.json`, labeled with the model version, and summarized in `reports/modeling_report.md`. Existing historical reports or feature-ablation artifacts are not recreated by the current pipeline. Output folders are created as needed; reruns overwrite current report/model files without clearing unrelated files.
 
 Informational CSV exports are not generated. Their tables are consolidated into
 the two Markdown reports, including complete association results. Artifacts

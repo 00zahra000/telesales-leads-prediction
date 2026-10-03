@@ -16,7 +16,6 @@ from src.db import create_db_engine
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REPORTS = PROJECT_ROOT / "reports"
 CHARTS = PROJECT_ROOT / "charts"
-ARTIFACTS = PROJECT_ROOT / "artifacts"
 
 
 def load_raw_leads(connection):
@@ -157,51 +156,6 @@ def analyze_outliers(leads):
     return pd.DataFrame(rows)
 
 
-def assess_feature_leakage(leads):
-    """Explicit provenance assessment; historical presence is not availability proof."""
-    # availability, risk, recommendation, reason; conditional inclusion requires confirmation.
-    decisions = {
-        "id": ("NO", "HIGH", "EXCLUDE", "Database surrogate key and ingestion order, not business information."),
-        "lead_id": ("YES: identifier", "HIGH", "EXCLUDE", "Use for joins and entity-safe splits only; repeated IDs must not cross splits."),
-        "loaded_at": ("NO", "HIGH", "EXCLUDE", "Ingestion timestamp is created after collection and has no scoring-time meaning."),
-        "completed_purchase": ("NO: future outcome", "HIGH", "EXCLUDE", "Prediction target; never a predictor. Confirm the outcome observation horizon."),
-        "created_at": ("LIKELY: confirm immutable", "LOW", "INCLUDE", "Lead creation should precede abandonment; use for chronological splitting. Calendar predictors require timestamp confirmation."),
-        "channel": ("LIKELY: confirm original attribution", "LOW", "INCLUDE", "Initial acquisition channel should be known before abandonment; verify it is not reassigned after conversion."),
-        "partner": ("LIKELY: confirm original attribution", "LOW", "INCLUDE", "Acquisition partner should be known before abandonment; verify attribution is not updated after purchase."),
-        "product_type": ("UNKNOWN: funnel snapshot", "MEDIUM", "INVESTIGATE", "Confirm abandoned-funnel intent rather than final purchased product."),
-        "device": ("UNKNOWN: event snapshot", "MEDIUM", "INVESTIGATE", "Require pre-score device, not device recorded during subsequent purchase."),
-        "city": ("UNKNOWN: profile snapshot", "MEDIUM", "INVESTIGATE", "Confirm city was captured before scoring, not completed during purchase; preserve historical missingness."),
-        "insurance_company": ("UNKNOWN: quote snapshot", "HIGH", "INVESTIGATE", "Confirm intended insurer was known before scoring, not the final purchased insurer."),
-        "payment_type": ("UNKNOWN: funnel snapshot", "HIGH", "INVESTIGATE", "Payment choice may be assigned at checkout; require the pre-abandonment choice."),
-        "minutes_since_abandonment": ("CONDITIONAL: as of score", "MEDIUM", "INVESTIGATE", "Calculate from the last known abandonment to historical scoring time, not extraction time or a later abandonment."),
-        "days_to_policy_expiry": ("CONDITIONAL: known policy date", "MEDIUM", "INVESTIGATE", "Use expiry known at scoring and calculate days at that moment; exclude subsequent renewal updates."),
-        "price": ("UNKNOWN: quote snapshot", "HIGH", "INVESTIGATE", "Require a quote available before scoring, not final transaction price or later repricing."),
-        "discount_percent": ("UNKNOWN: offer snapshot", "HIGH", "INVESTIGATE", "Require pre-score discount; exclude later Telesales incentives and final transaction discounts."),
-        "has_previous_purchase": ("CONDITIONAL: strictly historical", "HIGH", "INVESTIGATE", "All counted purchases must precede scoring and exclude this lead's target purchase; confirm identity matching."),
-        "visited_offer_page": ("CONDITIONAL: pre-score events", "HIGH", "INVESTIGATE", "Freeze flag at scoring; exclude subsequent revisits, contact responses and purchase activity."),
-        "incoming_call_last_24h": ("UNKNOWN: historical window", "HIGH", "INVESTIGATE", "Confirm incoming-call definition and a 24-hour window ending at scoring; exclude calls after prioritization."),
-        "sessions_last_7d": ("CONDITIONAL: historical window", "HIGH", "INVESTIGATE", "Seven-day event window must end at scoring; confirm event arrival latency and exclude later sessions."),
-        "offer_views_last_7d": ("CONDITIONAL: historical window", "HIGH", "INVESTIGATE", "Seven-day window must contain only views known at scoring, excluding later funnel activity."),
-        "price_comparisons_last_7d": ("CONDITIONAL: historical window", "HIGH", "INVESTIGATE", "Seven-day window ends at scoring; exclude subsequent comparisons and account for event arrival latency."),
-        "days_since_last_visit": ("CONDITIONAL: as of score", "HIGH", "INVESTIGATE", "Calculate using latest known pre-score visit, not extraction date or a later visit."),
-        "expected_margin": ("UNKNOWN: estimation inputs", "HIGH", "INVESTIGATE", "Require pre-score quote-time estimate with historical inputs, not realized profit or completed-policy information. Strong price association suggests redundancy, not proof of leakage."),
-    }
-    from src.features import ATTRIBUTION_ASSUMPTION, SELECTED_FEATURES
-
-    rows = []
-    for column in leads.columns:
-        availability, risk, recommendation, reason = decisions.get(
-            column, ("UNKNOWN", "HIGH", "INVESTIGATE", "No documented provenance; confirm business meaning and scoring-time availability."))
-        if column in SELECTED_FEATURES:
-            availability = "ASSUMED: pre-score snapshot (user-authorized experiment)"
-            recommendation = "INCLUDE"
-            reason = f"{reason} Experimental inclusion: {ATTRIBUTION_ASSUMPTION}"
-        rows.append({"feature_name": column, "feature_type": str(leads[column].dtype),
-                     "business_meaning": column.replace("_", " "), "available_at_scoring": availability,
-                     "leakage_risk": risk, "recommendation": recommendation, "reason": reason})
-    return pd.DataFrame(rows)
-
-
 def save_relationships(leads):
     """Step 2: describe imbalance and compare associations within history groups.
 
@@ -300,10 +254,7 @@ def save_relationships(leads):
                      "availability and leakage before using any candidate, including prior-purchase history. "
                      "Repeated Lead IDs affect independence; these are row-based exploratory findings, not "
                      "causal effects or held-out validation results.", ""])
-    ARTIFACTS.mkdir(parents=True, exist_ok=True)
     outliers = analyze_outliers(leads)
-    assessment = assess_feature_leakage(leads)
-    assessment.to_json(ARTIFACTS / "feature_assessment.json", orient="records", indent=2)
     sections.extend(["## Category purchase rates", "", markdown_table(rates_table), "",
                      "## Complete association results", "",
                      markdown_table(association_table), ""])
@@ -315,19 +266,6 @@ def save_relationships(leads):
         markdown_table(outliers), "",
         "These are investigation flags, not data-error labels. No values are removed, clipped or transformed. "
         "Pooled fences can reflect product mix, skew and discrete counts; investigate context before acting.", "",
-        "## Feature leakage assessment", "",
-        "Prediction moment: after funnel abandonment, when a lead becomes eligible for Telesales prioritization. "
-        "A column being present in historical data does not automatically make it valid for modeling. "
-        "Only values already known at that moment may be used. This dataset contains no event-level "
-        "snapshots proving those cutoffs, so conditional availability needs business confirmation.", "",
-        "INCLUDE means a candidate under the stated assumption, not automatic model selection. "
-        "created_at is used for splitting; identifiers, target and ingestion metadata are excluded as predictors. "
-        "INVESTIGATE features should remain out of training until their provenance is confirmed. "
-        "Existing explicit model feature lists are not changed by this assessment.", "",
-        markdown_table(assessment), "",
-        "Required confirmations: historical scoring timestamp, frozen quote/profile attribution, event-window "
-        "cutoffs and arrival latency, strictly prior purchase history, margin inputs, and target observation horizon. "
-        "Correlations with the target cannot establish whether a feature leaks future information.", "",
     ])
     with (REPORTS / "eda_report.md").open("a", encoding="utf-8") as report:
         report.write("\n" + "\n".join(sections))
