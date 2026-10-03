@@ -39,7 +39,6 @@ services:
     volumes:
       - ./data:/app/data:ro
       - ./reports:/app/reports
-      - ./analysis-report:/app/analysis-report
       - ./charts:/app/charts
       - ./artifacts:/app/artifacts
 
